@@ -9,7 +9,6 @@ local _flying_text_param = {
 	speed = 0.1
 }
 local draw_text = rendering.draw_text
-local _EDITOR_TYPE = defines.controllers.editor
 local _render_text_position = {0, 0}
 local _render_target_forces = {nil}
 local _render_text_param = {
@@ -76,75 +75,6 @@ end
 M.disconnect_train = disconnect_train
 
 
--- Probably, I should change it
----@param entity LuaEntity
----@param player LuaPlayer?
----@param on_pre_build boolean?
----@return boolean
-local function protect_train(entity, player, on_pre_build)
-	local train = entity.train
-	local force = entity.force
-
-	local neutral_force = game.forces.neutral
-	local _entity = train.front_stock
-	if _entity and _entity.valid then
-		local _force = _entity.force
-		if force ~= _force and
-			not (_allow_connection_with_neutral and _force == neutral_force) and
-			not (_allow_ally_connection and (force.get_cease_fire(_force) and
-			_force.get_cease_fire(force) and
-			force.get_friend(_force) and
-			_force.get_friend(force)))
-		then
-			remove_train(entity, player, on_pre_build)
-			return true
-		end
-	end
-
-	_entity = train.back_stock
-	if _entity and _entity.valid then
-		local _force = _entity.force
-		if force ~= _force and
-			not (_allow_connection_with_neutral and _force == neutral_force) and
-			not (_allow_ally_connection and (force.get_cease_fire(_force) and
-			_force.get_cease_fire(force) and
-			force.get_friend(_force) and
-			_force.get_friend(force)))
-		then
-			remove_train(entity, player, on_pre_build)
-			return true
-		end
-	end
-
-	return false
-end
-M.protect_train = protect_train
-
-
-function M.on_protect_from_theft_of_pipes(event)
-	local entity = event.created_entity
-	if not entity.valid then return end
-
-	pcall(protect_train, entity)
-end
-
-
-function M.on_built_entity(event)
-	local entity = event.created_entity
-	if not entity.valid then return end
-	local player = game.get_player(event.player_index)
-	if player then
-		if not player.valid then
-			player = nil
-		elseif player.controller_type == _EDITOR_TYPE then
-			return
-		end
-	end
-
-	pcall(protect_train, entity, player)
-end
-
-
 function M.on_train_created(event)
 	if event.old_train_id_2 == nil then return end
 
@@ -172,18 +102,6 @@ function M.on_train_created(event)
 end
 
 
--- function M.on_pre_build(event)
--- 	local entity = event.created_entity
--- 	if not entity.valid then return end
--- 	local player = game.get_player(event.player_index)
--- 	if not player.valid then
--- 		player = nil
--- 	end
-
--- 	pcall(protect_train, entity, player, true)
--- end
-
-
 local MOD_SETTINGS = {
 	["Train_prot_allow_ally_connection"] = function(value)
 		_allow_ally_connection = value
@@ -206,18 +124,6 @@ end
 
 --#region Pre-game stage
 
-M.handle_events = function()
-	local filter = {
-		{filter = "type", type = "locomotive", mode = "or"},
-		{filter = "type", type = "cargo-wagon", mode = "or"},
-		{filter = "type", type = "fluid-wagon", mode = "or"},
-		{filter = "type", type = "artillery-wagon", mode = "or"},
-	}
-
-	script.set_event_filter(defines.events.on_robot_built_entity, filter)
-	script.set_event_filter(defines.events.on_built_entity, filter)
-	-- script.set_event_filter(defines.events.on_pre_build, filter) -- doesn't support filters :/
-end
 
 local function add_remote_interface()
 	-- https://lua-api.factorio.com/latest/LuaRemote.html
@@ -225,25 +131,12 @@ local function add_remote_interface()
 	remote.add_interface("train_protection", {})
 end
 
-M.on_init = function()
-	-- update_global_data()
-	M.handle_events()
-end
-M.on_load = function()
-	-- link_data()
-	M.handle_events()
-end
-M.on_mod_enabled = M.handle_events
-M.on_mod_disabled = M.handle_events
 M.add_remote_interface = add_remote_interface
 
 --#endregion
 
 
 M.events = {
-	[defines.events.on_robot_built_entity] = M.on_protect_from_theft_of_pipes,
-	[defines.events.on_built_entity] = M.on_built_entity,
-	-- [defines.events.on_pre_build] = M.on_pre_build,
 	[defines.events.on_runtime_mod_setting_changed] = on_runtime_mod_setting_changed,
 	[defines.events.on_train_created] = M.on_train_created
 }
