@@ -63,6 +63,14 @@ local function disconnect_train(train, entity, first_carriage)
 	entity.disconnect_rolling_stock(defines.rail_direction.front)
 	if first_carriage.valid then
 		first_carriage.train.speed = 0.1
+
+		local passengers = first_carriage.train.passengers
+		for i = 1, #passengers do
+			local passenger = passengers[i]
+			if passenger.valid then
+				passenger.vehicle.set_driver(nil)
+			end
+		end
 	end
 end
 M.disconnect_train = disconnect_train
