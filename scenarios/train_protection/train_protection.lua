@@ -2,13 +2,14 @@
 local M = {}
 
 
-local DESTROY_PARAM = {raise_destroy = true}
+local _DESTROY_PARAM = {raise_destroy = true}
 local _flying_text_param = {
 	text = {"train_protection.warning"}, create_at_cursor=true,
 	color = {1, 0, 0}, time_to_live = 210,
 	speed = 0.1
 }
 local draw_text = rendering.draw_text
+local _EDITOR_TYPE = defines.controllers.editor
 local _render_text_position = {0, 0}
 local _render_target_forces = {nil}
 local _render_text_param = {
@@ -21,6 +22,7 @@ local _render_text_param = {
 	color = {200, 0, 0}
 }
 local _allow_ally_connection = settings.global["Train_prot_allow_ally_connection"].value
+local _allow_connection_with_neutral = settings.global["Train_prot_allow_connection_with_neutral"].value
 
 
 --#region Functions of events
@@ -48,60 +50,68 @@ local function remove_train(entity, player, on_pre_build)
 	_render_text_position[2] = ent_pos.y
 	draw_text(_render_text_param)
 
-	entity.destroy(DESTROY_PARAM)
+	entity.destroy(_DESTROY_PARAM)
 end
-M.remove_pipe = remove_train
+M.remove_train = remove_train
+
+
+---@param train LuaTrain
+---@param entity LuaEntity
+---@param first_carriage LuaEntity
+local function disconnect_train(train, entity, first_carriage)
+	train.speed = 0
+	entity.disconnect_rolling_stock(defines.rail_direction.front)
+	if first_carriage.valid then
+		first_carriage.train.speed = 0.1
+	end
+end
+M.disconnect_train = disconnect_train
 
 
 -- Probably, I should change it
 ---@param entity LuaEntity
 ---@param player LuaPlayer?
 ---@param on_pre_build boolean?
+---@return boolean
 local function protect_train(entity, player, on_pre_build)
 	local train = entity.train
 	local force = entity.force
-	if not _allow_ally_connection then
-		local _entity = train.front_stock
-		if _entity and _entity.valid and force ~= _entity.force then
-			remove_train(entity, player, on_pre_build)
-			return
-		end
 
-		_entity = train.back_stock
-		if _entity and _entity.valid and force ~= _entity.force then
-			remove_train(entity, player, on_pre_build)
-			return
-		end
-		return
-	end
-
+	local neutral_force = game.forces.neutral
 	local _entity = train.front_stock
 	if _entity and _entity.valid then
 		local _force = _entity.force
-		if force ~= _force and not (force.get_cease_fire(_force) and
+		if force ~= _force and
+			not (_allow_connection_with_neutral and _force == neutral_force) and
+			not (_allow_ally_connection and (force.get_cease_fire(_force) and
 			_force.get_cease_fire(force) and
 			force.get_friend(_force) and
-			_force.get_friend(force))
+			_force.get_friend(force)))
 		then
 			remove_train(entity, player, on_pre_build)
-			return
+			return true
 		end
 	end
 
 	_entity = train.back_stock
 	if _entity and _entity.valid then
 		local _force = _entity.force
-		if force ~= _force and not (force.get_cease_fire(_force) and
+		if force ~= _force and
+			not (_allow_connection_with_neutral and _force == neutral_force) and
+			not (_allow_ally_connection and (force.get_cease_fire(_force) and
 			_force.get_cease_fire(force) and
 			force.get_friend(_force) and
-			_force.get_friend(force))
+			_force.get_friend(force)))
 		then
 			remove_train(entity, player, on_pre_build)
-			return
+			return true
 		end
 	end
+
+	return false
 end
 M.protect_train = protect_train
+
 
 function M.on_protect_from_theft_of_pipes(event)
 	local entity = event.created_entity
@@ -110,16 +120,49 @@ function M.on_protect_from_theft_of_pipes(event)
 	pcall(protect_train, entity)
 end
 
+
 function M.on_built_entity(event)
 	local entity = event.created_entity
 	if not entity.valid then return end
 	local player = game.get_player(event.player_index)
-	if not player.valid then
-		player = nil
+	if player then
+		if not player.valid then
+			player = nil
+		elseif player.controller_type == _EDITOR_TYPE then
+			return
+		end
 	end
 
 	pcall(protect_train, entity, player)
 end
+
+
+function M.on_train_created(event)
+	if event.old_train_id_2 == nil then return end
+
+	local train = event.train
+	if not train.valid then return end
+
+	local neutral_force = game.forces.neutral
+	local first_carriage = train.carriages[1]
+	local force = first_carriage.force
+	local carriages = train.carriages
+	for i = 2, #carriages do
+		local carriage = carriages[i]
+		local _force = carriage.force
+		if force ~= _force and
+			not (_allow_connection_with_neutral and _force == neutral_force) and
+			not (_allow_ally_connection and (force.get_cease_fire(_force) and
+			_force.get_cease_fire(force) and
+			force.get_friend(_force) and
+			_force.get_friend(force)))
+		then
+			disconnect_train(train, carriage, first_carriage)
+			break
+		end
+	end
+end
+
 
 -- function M.on_pre_build(event)
 -- 	local entity = event.created_entity
@@ -132,9 +175,13 @@ end
 -- 	pcall(protect_train, entity, player, true)
 -- end
 
+
 local MOD_SETTINGS = {
 	["Train_prot_allow_ally_connection"] = function(value)
 		_allow_ally_connection = value
+	end,
+	["Train_prot_allow_connection_with_neutral"] = function(value)
+		_allow_connection_with_neutral = value
 	end,
 }
 local function on_runtime_mod_setting_changed(event)
@@ -189,7 +236,8 @@ M.events = {
 	[defines.events.on_robot_built_entity] = M.on_protect_from_theft_of_pipes,
 	[defines.events.on_built_entity] = M.on_built_entity,
 	-- [defines.events.on_pre_build] = M.on_pre_build,
-	[defines.events.on_runtime_mod_setting_changed] = on_runtime_mod_setting_changed
+	[defines.events.on_runtime_mod_setting_changed] = on_runtime_mod_setting_changed,
+	[defines.events.on_train_created] = M.on_train_created
 }
 M.events_when_off = {}
 
