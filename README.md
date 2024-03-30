@@ -44,10 +44,10 @@
   align="right"
 /> -->
 
-Private electricity
--------------------
+Train protection
+----------------
 
-Does not allow enemies to connect to someone else's electricity
+Doesn't allow to connect your train to someone else's train.
 
 <p align="center">
   <a href="https://mods.factorio.com/mod/train_protection/downloads"><strong>Download the mod&nbsp;&nbsp;▶</strong></a>
