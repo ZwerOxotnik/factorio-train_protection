@@ -169,5 +169,5 @@ docs/_build
 # lua2p debug files
 *.meta.lua
 
-# Factorio API files
+# Factorio debug files
 .vscode/factorio/*
