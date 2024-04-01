@@ -131,6 +131,11 @@ end
 
 --#region Pre-game stage
 
+M.on_mod_enabled = function()
+	_allow_ally_connection = settings.global["Train_prot_allow_ally_connection"].value
+	_allow_connection_with_neutral = settings.global["Train_prot_allow_connection_with_neutral"].value
+end
+
 
 local function add_remote_interface()
 	-- https://lua-api.factorio.com/latest/LuaRemote.html
